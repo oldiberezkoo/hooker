@@ -1,5 +1,5 @@
 {
-  "name": "code-analysis-tool",
+  "name": "hooker",
   "version": "1.0.0",
   "description": "A comprehensive TypeScript/JavaScript code analysis and documentation generation tool with modular architecture",
   "main": "index.ts",
@@ -20,7 +20,7 @@
     "typescript",
     "javascript"
   ],
-  "author": "Your Name",
+  "author": "oldiberezkoo",
   "license": "MIT",
   "engines": {
     "bun": ">=1.0.0"
