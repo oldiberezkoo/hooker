@@ -1,0 +1,40 @@
+{
+  "name": "code-analysis-tool",
+  "version": "1.0.0",
+  "description": "A comprehensive TypeScript/JavaScript code analysis and documentation generation tool with modular architecture",
+  "main": "index.ts",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "build": "bun build src/main.ts --outdir dist",
+    "test": "bun test",
+    "example": "bun run examples/basic-usage.ts",
+    "analyze": "bun run src/main.ts"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.24.0",
+    "@babel/traverse": "^7.24.0",
+    "@babel/types": "^7.24.0",
+    "prettier": "^3.3.3",
+    "recast": "^0.24.1",
+    "ollama": "^0.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "typescript": "^5.4.2"
+  },
+  "keywords": [
+    "code-analysis",
+    "deobfuscation",
+    "documentation",
+    "architecture",
+    "runtime-analysis",
+    "typescript",
+    "javascript"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}
