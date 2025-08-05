@@ -4,21 +4,23 @@ import { debug, errorLog } from "./utils/logger";
 import { walk, ensureDir, readFileSafe } from "./utils/fileSystem";
 import { parseDeps } from "./parsing/dependencies";
 import { beautify } from "./beautification";
+import { writeFile, appendFile } from "fs/promises";
+
 import {
   processFile,
   generateArchitectureDocs,
-  writeMarkdownStream,
 } from "./documentation/generator";
 import { runOllamaStreamToFile } from "./ollama/client";
 import { fileHash } from "./utils/crypto";
-
-import type { DepGraph, FileHandle as CustomFileHandle } from "./types";
 import { LANGUAGE, eLanguage, PROMPT, ROOT, OLLAMA_HOST_ADDRESS } from "..";
 
-// Проверка подключения к Ollama
+import type { DepGraph, FileHandle as CustomFileHandle } from "./types";
+
+/**
+ * Проверка подключения к Ollama
+ */
 async function checkOllamaConnection(): Promise<boolean> {
   try {
-    // Попробуем сделать простой запрос к Ollama API
     const res = await fetch(`${OLLAMA_HOST_ADDRESS}/api/tags`, {
       method: "GET",
     });
@@ -34,11 +36,9 @@ async function checkOllamaConnection(): Promise<boolean> {
   }
 }
 
-// Причина, почему лого может не вставляться в файлы:
-// Если markdown-файл потом обрабатывается каким-то markdown-парсером или LLM, который удаляет/игнорирует HTML-теги или многострочные блоки с ```,
-// то лого может не отображаться. Также, если markdown-файл уже существует и не перезаписывается, старый вариант без лого может остаться.
-// Проверьте, что markdown-файл действительно создаётся с новым содержимым и что markdown-рендер поддерживает HTML и многострочные блоки.
-
+/**
+ * Убедиться, что все выходные каталоги существуют
+ */
 async function ensureAllDirs(): Promise<void> {
   const dirs = [
     ".cache",
@@ -53,6 +53,9 @@ async function ensureAllDirs(): Promise<void> {
   }
 }
 
+/**
+ * Построение графа зависимостей
+ */
 async function buildGraph(files: string[]): Promise<DepGraph> {
   const graph: DepGraph = {};
   for (const f of files) {
@@ -67,43 +70,70 @@ async function buildGraph(files: string[]): Promise<DepGraph> {
   return graph;
 }
 
+/**
+ * Генерация заголовка markdown-файла
+ */
 function makeHeader(rel: string, deps: Set<string>): string {
   const depsList =
     [...deps].map((d) => `- \`${d}\``).join("\n") || "_No dependencies_";
-  // Важно: Markdown поддерживает HTML, но не все рендеры это показывают!
-  // Если лого не видно, попробуйте открыть md-файл в GitHub или VSCode.
-  // Если всё равно не видно, возможно, markdown-файл не обновляется.
-  const logo = `
-<p align="center">
 
-\`\`\`bash
-   ▄█    █▄     ▄██████▄   ▄██████▄     ▄█   ▄█▄    ▄████████    ▄████████ 
-  ███    ███   ███    ███ ███    ███   ███ ▄███▀   ███    ███   ███    ███ 
-  ███    ███   ███    ███ ███    ███   ███▐██▀     ███    █▀    ███    ███ 
- ▄███▄▄▄▄███▄▄ ███    ███ ███    ███  ▄█████▀     ▄███▄▄▄      ▄███▄▄▄▄██▀ 
+  // ИСПРАВЛЕНО: Добавлены обязательные пустые строки до/после блока кода
+  // и экранированы спецсимволы для корректного отображения в Markdown
+  const logo = `
+\`\`\`
+ ▄█    █▄     ▄██████▄   ▄██████▄     ▄█   ▄█▄    ▄████████    ▄████████ 
+███    ███   ███    ███ ███    ███   ███ ▄███▀   ███    ███   ███    ███ 
+███    ███   ███    ███ ███    ███   ███▐██▀     ███    █▀    ███    ███ 
+▄███▄▄▄▄███▄▄ ███    ███ ███    ███  ▄█████▀     ▄███▄▄▄      ▄███▄▄▄▄██▀ 
 ▀▀███▀▀▀▀███▀  ███    ███ ███    ███ ▀▀█████▄    ▀▀███▀▀▀     ▀▀███▀▀▀▀▀   
-  ███    ███   ███    ███ ███    ███   ███▐██▄     ███    █▄  ▀███████████ 
-  ███    ███   ███    ███ ███    ███   ███ ▀███▄   ███    ███   ███    ███ 
-  ███    █▀     ▀██████▀   ▀██████▀    ███   ▀█▀   ██████████   ███    ███ 
+███    ███   ███    ███ ███    ███   ███▐██▄     ███    █▄  ▀███████████ 
+███    ███   ███    ███ ███    ███   ███ ▀███▄   ███    ███   ███    ███ 
+███    █▀     ▀██████▀   ▀██████▀    ███   ▀█▀   ██████████   ███    ███ 
                                        ▀                        ███    ███
 \`\`\`
 
-</p>
-<p align="center">
-  POWERED BY <a href="https://github.com/oldiberezkoo/hooker">HOOKER</a>
-</p>
 `;
+
   const why =
     LANGUAGE === eLanguage.Russian
       ? `**Зачем нужен этот файл:**\n\nЭтот файл (\`${rel}\`) реализует архитектурную или прикладную логику.\n\n`
       : `**Why this file exists:**\n\nThis file (\`${rel}\`) implements specific application logic.\n\n`;
+
   const depsLabel =
     LANGUAGE === eLanguage.Russian ? "**Зависимости:**" : "**Dependencies:**";
 
-  // Вставляем лого прямо после заголовка
-  return `# ${rel}\n\n${logo}\n${why}${depsLabel}\n\n${depsList}\n\n---\n\n`;
+  // ИСПРАВЛЕНО: Добавлены обязательные пустые строки вокруг логотипа
+  return `# ${rel}
+
+${logo.trim()}
+
+${why}${depsLabel}
+
+${depsList}
+
+---
+
+`;
 }
 
+/**
+ * Обёртка для записи markdown-файла
+ */
+async function writeMarkdownStream(
+  filePath: string,
+  header: string,
+  _placeholder: null,
+  cb: () => Promise<void>
+): Promise<void> {
+  // Для отладки можно оставить один вывод
+  // console.log("==HEADER==\n" + header);
+  await writeFile(filePath, header, "utf-8"); // убираем лишние \n\n, т.к. header уже содержит все нужные переводы строк
+  await cb();
+}
+
+/**
+ * Генерация markdown-файла для одного исходника
+ */
 async function generateMarkdownForFile(
   file: string,
   deps: Set<string>
@@ -112,28 +142,23 @@ async function generateMarkdownForFile(
   const outPath = join("docs/files", rel + ".md");
   await ensureDir(dirname(outPath));
 
-  // Skip if already exists
+  const FORCE_REWRITE = true;
+
   try {
     const st = await fs.stat(outPath);
-    if (st.size > 0) {
-      // ВАЖНО: если файл уже существует, он не будет перезаписан, и лого не появится!
+    if (!FORCE_REWRITE && st.size > 0) {
       debug(`[skip] ${rel}`);
       return;
     }
-  } catch {
-    // not exist
-  }
+  } catch {}
 
-  // Read & beautify
   const raw = await readFileSafe(file);
   const code = await beautify(raw).catch(() => raw);
 
-  // Build prompt, header, hash
   const prompt = PROMPT(code);
   const hash = fileHash(code);
   const header = makeHeader(rel, deps);
 
-  // Stream to markdown
   await writeMarkdownStream(outPath, header, null, async () => {
     debug(`[ollama] starting ${rel}`);
     const handle = (await fs.open(outPath, "a")) as unknown as CustomFileHandle;
@@ -146,10 +171,12 @@ async function generateMarkdownForFile(
   });
 }
 
+/**
+ * Главный запуск
+ */
 async function run(): Promise<void> {
   debug(`[run] ROOT=${ROOT}`);
 
-  // Проверяем подключение к Ollama перед началом работы
   const ollamaOk = await checkOllamaConnection();
   if (!ollamaOk) {
     errorLog(
@@ -158,7 +185,6 @@ async function run(): Promise<void> {
     process.exit(1);
   }
 
-  // 1. Gather files
   let files: string[];
   try {
     files = await walk(ROOT);
@@ -168,7 +194,6 @@ async function run(): Promise<void> {
     process.exit(1);
   }
 
-  // 2. Prepare directories
   try {
     await ensureAllDirs();
   } catch (err) {
@@ -176,10 +201,8 @@ async function run(): Promise<void> {
     process.exit(1);
   }
 
-  // 3. Dependency graph
   const graph = await buildGraph(files);
 
-  // 4. Architecture docs
   try {
     await generateArchitectureDocs(graph, files);
     debug("[run] architecture docs generated");
@@ -187,7 +210,6 @@ async function run(): Promise<void> {
     errorLog("[run] generateArchitectureDocs failed", err);
   }
 
-  // 5. Instrumented versions
   for (const file of files) {
     try {
       await processFile(file, graph, ROOT);
@@ -197,7 +219,6 @@ async function run(): Promise<void> {
     }
   }
 
-  // 6. Per-file markdown via Ollama
   for (const file of files) {
     try {
       await generateMarkdownForFile(file, graph[file] ?? new Set());
