@@ -1,11 +1,11 @@
-export function debug(...args: any[]): void {
+export function debug(context: string, ...args: any[]): void {
   // Central debug logger, can be enhanced to log to file or external system
   // eslint-disable-next-line no-console
-  console.log("[DEBUG]", ...args);
+  console.log(`[DEBUG] ${context}`, ...args);
 }
 
-export function errorLog(...args: any[]): void {
+export function errorLog(context: string, ...args: any[]): void {
   // Central error logger, can be enhanced to log to file or external system
   // eslint-disable-next-line no-console
-  console.error("[ERROR]", ...args);
+  console.error(`[ERROR] ${context}`, ...args);
 }

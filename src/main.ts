@@ -1,286 +1,215 @@
 import { join, dirname, relative } from "path";
+import { promises as fs } from "fs";
 import { debug, errorLog } from "./utils/logger";
-import { walk, ensureDir } from "./utils/fileSystem";
+import { walk, ensureDir, readFileSafe } from "./utils/fileSystem";
 import { parseDeps } from "./parsing/dependencies";
 import { beautify } from "./beautification";
 import {
   processFile,
   generateArchitectureDocs,
+  writeMarkdownStream,
 } from "./documentation/generator";
+import { runOllamaStreamToFile } from "./ollama/client";
 import { fileHash } from "./utils/crypto";
-import type { DepGraph } from "./types";
 
-async function enhancedMain(): Promise<void> {
-  const ROOT = "project";
-  debug(`[enhancedMain] Starting enhanced analysis process. Root: ${ROOT}`);
+import type { DepGraph, FileHandle as CustomFileHandle } from "./types";
+import { LANGUAGE, eLanguage, PROMPT, ROOT, OLLAMA_HOST_ADDRESS } from "..";
 
-  let files: string[] = [];
+// Проверка подключения к Ollama
+async function checkOllamaConnection(): Promise<boolean> {
   try {
-    files = await walk(ROOT);
-    debug(`[enhancedMain] Files found: ${files.length}`);
+    // Попробуем сделать простой запрос к Ollama API
+    const res = await fetch(`${OLLAMA_HOST_ADDRESS}/api/tags`, {
+      method: "GET",
+    });
+    if (!res.ok) {
+      debug(`[ollama] Ollama responded with status ${res.status}`);
+      return false;
+    }
+    debug("[ollama] Ollama connection OK");
+    return true;
   } catch (err) {
-    errorLog("[enhancedMain] Failed to walk project directory", err);
-    return;
+    errorLog("[ollama] Ollama connection failed", err);
+    return false;
   }
+}
 
+// Причина, почему лого может не вставляться в файлы:
+// Если markdown-файл потом обрабатывается каким-то markdown-парсером или LLM, который удаляет/игнорирует HTML-теги или многострочные блоки с ```,
+// то лого может не отображаться. Также, если markdown-файл уже существует и не перезаписывается, старый вариант без лого может остаться.
+// Проверьте, что markdown-файл действительно создаётся с новым содержимым и что markdown-рендер поддерживает HTML и многострочные блоки.
+
+async function ensureAllDirs(): Promise<void> {
+  const dirs = [
+    ".cache",
+    "docs",
+    "docs/files",
+    "docs/instrumented",
+    "docs/architecture",
+  ];
+  for (const d of dirs) {
+    await ensureDir(d);
+    debug(`[dirs] ensured ${d}`);
+  }
+}
+
+async function buildGraph(files: string[]): Promise<DepGraph> {
   const graph: DepGraph = {};
-
-  // Создаем выходные директории
-  try {
-    await ensureDir(".cache");
-    await ensureDir("docs");
-    await ensureDir("docs/files");
-    await ensureDir("docs/instrumented");
-    await ensureDir("docs/architecture");
-    debug("[enhancedMain] Output directories ensured");
-  } catch (err) {
-    errorLog("[enhancedMain] Failed to ensure output directories", err);
-    return;
-  }
-
-  // Строим граф зависимостей
-  debug(`[enhancedMain] Building dependency graph...`);
   for (const f of files) {
     try {
       graph[f] = await parseDeps(f);
-      debug(
-        `[enhancedMain] Dependencies for ${f}: ${[...graph[f]].join(", ")}`
-      );
+      debug(`[deps] ${relative(ROOT, f)} → ${[...graph[f]].join(", ") || "–"}`);
     } catch (err) {
-      errorLog(`[enhancedMain] Failed to parse dependencies for ${f}`, err);
+      errorLog(`[deps] parseDeps failed for ${f}`, err);
       graph[f] = new Set();
     }
   }
+  return graph;
+}
 
-  // Генерируем архитектурную документацию
-  debug(`[enhancedMain] Generating architecture documentation...`);
+function makeHeader(rel: string, deps: Set<string>): string {
+  const depsList =
+    [...deps].map((d) => `- \`${d}\``).join("\n") || "_No dependencies_";
+  // Важно: Markdown поддерживает HTML, но не все рендеры это показывают!
+  // Если лого не видно, попробуйте открыть md-файл в GitHub или VSCode.
+  // Если всё равно не видно, возможно, markdown-файл не обновляется.
+  const logo = `
+<p align="center">
+
+\`\`\`bash
+   ▄█    █▄     ▄██████▄   ▄██████▄     ▄█   ▄█▄    ▄████████    ▄████████ 
+  ███    ███   ███    ███ ███    ███   ███ ▄███▀   ███    ███   ███    ███ 
+  ███    ███   ███    ███ ███    ███   ███▐██▀     ███    █▀    ███    ███ 
+ ▄███▄▄▄▄███▄▄ ███    ███ ███    ███  ▄█████▀     ▄███▄▄▄      ▄███▄▄▄▄██▀ 
+▀▀███▀▀▀▀███▀  ███    ███ ███    ███ ▀▀█████▄    ▀▀███▀▀▀     ▀▀███▀▀▀▀▀   
+  ███    ███   ███    ███ ███    ███   ███▐██▄     ███    █▄  ▀███████████ 
+  ███    ███   ███    ███ ███    ███   ███ ▀███▄   ███    ███   ███    ███ 
+  ███    █▀     ▀██████▀   ▀██████▀    ███   ▀█▀   ██████████   ███    ███ 
+                                       ▀                        ███    ███
+\`\`\`
+
+</p>
+<p align="center">
+  POWERED BY <a href="https://github.com/oldiberezkoo/hooker">HOOKER</a>
+</p>
+`;
+  const why =
+    LANGUAGE === eLanguage.Russian
+      ? `**Зачем нужен этот файл:**\n\nЭтот файл (\`${rel}\`) реализует архитектурную или прикладную логику.\n\n`
+      : `**Why this file exists:**\n\nThis file (\`${rel}\`) implements specific application logic.\n\n`;
+  const depsLabel =
+    LANGUAGE === eLanguage.Russian ? "**Зависимости:**" : "**Dependencies:**";
+
+  // Вставляем лого прямо после заголовка
+  return `# ${rel}\n\n${logo}\n${why}${depsLabel}\n\n${depsList}\n\n---\n\n`;
+}
+
+async function generateMarkdownForFile(
+  file: string,
+  deps: Set<string>
+): Promise<void> {
+  const rel = relative(ROOT, file).replace(/\\/g, "/");
+  const outPath = join("docs/files", rel + ".md");
+  await ensureDir(dirname(outPath));
+
+  // Skip if already exists
   try {
-    await generateArchitectureDocs(graph, files);
-  } catch (err) {
-    errorLog(`[enhancedMain] Failed to generate architecture docs:`, err);
+    const st = await fs.stat(outPath);
+    if (st.size > 0) {
+      // ВАЖНО: если файл уже существует, он не будет перезаписан, и лого не появится!
+      debug(`[skip] ${rel}`);
+      return;
+    }
+  } catch {
+    // not exist
   }
 
-  // Обрабатываем каждый файл
-  debug(`[enhancedMain] Generating enhanced documentation for each file...`);
+  // Read & beautify
+  const raw = await readFileSafe(file);
+  const code = await beautify(raw).catch(() => raw);
+
+  // Build prompt, header, hash
+  const prompt = PROMPT(code);
+  const hash = fileHash(code);
+  const header = makeHeader(rel, deps);
+
+  // Stream to markdown
+  await writeMarkdownStream(outPath, header, null, async () => {
+    debug(`[ollama] starting ${rel}`);
+    const handle = (await fs.open(outPath, "a")) as unknown as CustomFileHandle;
+    try {
+      await runOllamaStreamToFile(prompt, hash, handle);
+      debug(`[ollama] finished ${rel}`);
+    } finally {
+      await handle.close();
+    }
+  });
+}
+
+async function run(): Promise<void> {
+  debug(`[run] ROOT=${ROOT}`);
+
+  // Проверяем подключение к Ollama перед началом работы
+  const ollamaOk = await checkOllamaConnection();
+  if (!ollamaOk) {
+    errorLog(
+      `[run] Ollama не доступен. Проверьте, что Ollama запущен на ${OLLAMA_HOST_ADDRESS}`
+    );
+    process.exit(1);
+  }
+
+  // 1. Gather files
+  let files: string[];
+  try {
+    files = await walk(ROOT);
+    debug(`[run] found ${files.length} files`);
+  } catch (err) {
+    errorLog("[run] walk failed", err);
+    process.exit(1);
+  }
+
+  // 2. Prepare directories
+  try {
+    await ensureAllDirs();
+  } catch (err) {
+    errorLog("[run] ensureAllDirs failed", err);
+    process.exit(1);
+  }
+
+  // 3. Dependency graph
+  const graph = await buildGraph(files);
+
+  // 4. Architecture docs
+  try {
+    await generateArchitectureDocs(graph, files);
+    debug("[run] architecture docs generated");
+  } catch (err) {
+    errorLog("[run] generateArchitectureDocs failed", err);
+  }
+
+  // 5. Instrumented versions
   for (const file of files) {
     try {
       await processFile(file, graph, ROOT);
+      debug(`[instrument] ${relative(ROOT, file)}`);
     } catch (err) {
-      errorLog(`[enhancedMain] Failed to process file ${file}:`, err);
-      // Продолжаем обработку других файлов
+      errorLog(`[instrument] processFile failed for ${file}`, err);
     }
   }
 
-  debug(
-    "✅ Enhanced analysis complete: per-file docs, architecture analysis, and instrumented versions generated."
-  );
-}
-
-async function main(): Promise<void> {
-  const ROOT = "project";
-  debug(`[main] Starting main process. Root: ${ROOT}`);
-  let files: string[] = [];
-  try {
-    files = await walk(ROOT);
-    debug(`[main] Files found: ${files.length}`);
-  } catch (err) {
-    errorLog("[main] Failed to walk project directory", err);
-    return;
-  }
-  const graph: DepGraph = {};
-
-  try {
-    await ensureDir(".cache");
-    await ensureDir("docs/files");
-    debug("[main] Output directories ensured");
-  } catch (err) {
-    errorLog("[main] Failed to ensure output directories", err);
-    return;
-  }
-
-  debug(`[main] Building dependency graph...`);
-  for (const f of files) {
-    try {
-      graph[f] = await parseDeps(f);
-      debug(`[main] Dependencies for ${f}: ${[...graph[f]].join(", ")}`);
-    } catch (err) {
-      errorLog(`[main] Failed to parse dependencies for ${f}`, err);
-      graph[f] = new Set();
-    }
-  }
-
-  debug(`[main] Generating markdown documentation for each file...`);
+  // 6. Per-file markdown via Ollama
   for (const file of files) {
-    const rel = relative(ROOT, file).replace(/\\/g, "/");
-    const outPath = join("docs/files", rel + ".md");
-    debug(`[main] Processing file: ${file} (rel: ${rel})`);
     try {
-      await ensureDir(dirname(outPath));
-      debug(`[main] Output directory ensured for: ${outPath}`);
+      await generateMarkdownForFile(file, graph[file] ?? new Set());
     } catch (err) {
-      errorLog(`[main] Failed to ensure output directory for: ${outPath}`, err);
-      continue;
+      errorLog(`[markdown] failed for ${file}`, err);
     }
-
-    let outStat: any | undefined;
-    try {
-      const { stat } = await import("fs/promises");
-      outStat = await stat(outPath);
-      if (outStat) {
-        debug(`[main] Output file exists: ${outPath} (size: ${outStat.size})`);
-      }
-    } catch {
-      outStat = undefined;
-      debug(`[main] Output file does not exist: ${outPath}`);
-    }
-    if (outStat && outStat.size > 0) {
-      debug(`[main] Skipping ${rel} (already documented)`);
-      continue;
-    }
-
-    let raw: string;
-    try {
-      const { readFileSafe } = await import("./utils/fileSystem");
-      raw = await readFileSafe(file);
-      debug(`[main] Read file: ${file} (length: ${raw.length})`);
-    } catch (err) {
-      errorLog(`[main] Failed to read file: ${file}`, err);
-      continue;
-    }
-    let code: string;
-    try {
-      code = await beautify(raw);
-      debug(`[main] Beautified code for: ${file}`);
-    } catch (err) {
-      errorLog(`[main] Beautify failed for file: ${file}`, err);
-      code = raw;
-    }
-    const depsSet = graph[file] ?? new Set();
-    const depsList = [...depsSet].map((d) => `- \`${d}\``).join("\n");
-    const whyFile = `**Why this file exists:**\n\nThis file (\`${rel}\`) is present in the project because it implements specific logic, functionality, or architectural responsibilities required by the application. Its dependencies and code structure reflect its role within the codebase. See below for a detailed breakdown.\n\n`;
-
-    const header = `# ${rel}\n\n${whyFile}**Dependencies:**\n\n${depsList}\n\n---\n\n`;
-
-    const prompt = `
-You are a lead expert in reverse engineering and JavaScript/TypeScript source code analysis.
-Your task is to perform a deep, accurate, and professional examination of the given file for auditing, documentation, and architectural understanding.
-
-Use the strictly structured template below. Fill each section with detailed explanations, examples, and code excerpts.
-
-1. **General Purpose and Architecture**  
-   - Describe the business logic or user scenario addressed by the file.  
-   - Specify the main architectural patterns (modules, layers, asynchronous patterns via async/await or generators).  
-   - **Example:**  
-     > This module handles tracking of video item impressions and clicks.  
-     > - Implements the Command pattern for event dispatch.  
-     > - Main export is \`trackEvent(eventType: string, payload: Payload): Promise<void>\`.  
-     > - Asynchronous queue is implemented with generators:  
-     >   \`\`\`ts
-     >   export function* sendQueue(): Generator<Promise<void>, void, unknown> {
-     >     for (const item of queue) {
-     >       yield api.send(item);
-     >     }
-     >   }
-     >   \`\`\`
-
-2. **Input and Output Data**  
-   - List all public functions, their signatures, expected arguments, and return types.  
-   - Specify what data GraphQL queries accept and what they return.  
-   - **Example:**  
-     \`\`\`ts
-     /**
-      * @param id — unique video identifier
-      * @returns Promise<{ ownerId: string; duration: number; }>
-      */
-     export async function fetchVideoMeta(id: string): Promise<VideoMeta> { /* ... */ }
-     \`\`\`
-
-3. **Dependencies**  
-   - Enumerate external packages (\`graphql-request\`, \`lodash\`, \`moment\`, etc.) and their roles.  
-   - List internal modules and types, including their import origins.  
-   - **Example table:**
-
-     | Module                         | Purpose                                |
-     |--------------------------------|----------------------------------------|
-     | \`import { gql }\`               | Constructs GraphQL queries             |
-     | \`import { errorLog }\`          | Universal error logger                 |
-
-4. **Side Effects and Environment Interaction**  
-   - Describe network calls (API, WebSocket), access to localStorage/sessionStorage.  
-   - Note usage of global variables, DOM manipulation, cookies, etc.  
-   - **If none:** "No side effects present in this file."
-
-5. **Key Algorithms and Logic**  
-   - Break down the most non-trivial parts by subitems:  
-     - Tracking (impressions, clicks)  
-     - Time parsing and formatting  
-     - Asynchronous operation queue  
-   - For each, explain:  
-     1. What the algorithm does.  
-     2. A step-by-step example with real variable names.  
-     3. Potential vulnerabilities or edge cases.  
-   - **Example:**
-     \`\`\`ts
-     // Click tracking function
-     export async function trackClick(itemId: string): Promise<void> {
-       try {
-         const resp = await api.query(CLICK_MUTATION, { itemId });
-         if (!resp.ok) throw new Error('Failed');
-       } catch (e) {
-         errorLog(e, { module: 'trackClick', itemId });
-       }
-     }
-     \`\`\`
-
-6. **Potential Reverse Engineering / Injection Points**  
-   - Identify functions or areas where data interception or logic substitution is possible (middleware, arguments, global objects).  
-   - **Example:**  
-     > You can replace \`api.query\` with a mock via dependency injection to intercept GraphQL requests.  
-     > The \`sendQueue()\` generator can be manipulated by injecting a custom \`queue\` array.
-
-7. **Code Structure Tree and Summary**  
-   - Internally analyze the entire codebase to build a hierarchical tree of its modules, functions, and relationships.  
-   - Then present a concise, clear rewrite of that tree—listing each node (module, function, export) and its immediate children.
-
----
-
-**Response Requirements:**  
-- Be concise and focused; avoid unnecessary verbosity.  
-- Use \`function\` declarations in code examples.  
-- Include lines of exact code snippets where necessary..  
-- If a section is not applicable, explicitly state "No relevant content."
-
-**Source code for analysis:**
-
-\`\`\`ts
-${code}
-\`\`\`
-    `.trim();
-
-    const chunkHash = fileHash(code);
-
-    // Stream Ollama output directly to file in real time
-    const { writeMarkdownStream } = await import("./documentation/generator");
-    const { runOllamaStreamToFile } = await import("./ollama/client");
-    const { open } = await import("fs/promises");
-
-    await writeMarkdownStream(outPath, header, null, async () => {
-      debug(
-        `[main] Running ollama (stream:true) for: ${file} (hash: ${chunkHash})`
-      );
-      await runOllamaStreamToFile(prompt, chunkHash, await open(outPath, "a"));
-      debug(`[main] Ollama streaming response finished for: ${file}`);
-    });
   }
 
-  debug("✅ Phase 1 complete: per-file docs generated.");
+  debug("[run] ✅ all steps complete");
 }
 
-// Export both functions for flexibility
-export { enhancedMain, main };
-
-// Run enhanced main by default
-enhancedMain().catch((err: unknown) => {
-  errorLog("[main] Unhandled error:", err);
+run().catch((err) => {
+  errorLog("[run] unhandled error", err);
   process.exit(1);
 });

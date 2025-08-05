@@ -69,3 +69,8 @@ export interface Stats {
   isDirectory: () => boolean;
   size: number;
 }
+
+export enum eLanguage {
+  Russian = "Russian",
+  English = "English",
+}

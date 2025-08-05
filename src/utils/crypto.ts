@@ -8,10 +8,10 @@ export function fileHash(content: string): string {
       .update(content)
       .digest("hex")
       .slice(0, 32);
-    debug(`[fileHash] Calculated hash: ${hash}`);
+    debug("[crypto.ts][fileHash]", `Calculated hash: ${hash}`);
     return hash;
   } catch (err) {
-    errorLog("[fileHash] Failed to calculate hash", err);
+    errorLog("[crypto.ts][fileHash]", "Failed to calculate hash", err);
     return "unknown_hash";
   }
 }

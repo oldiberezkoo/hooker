@@ -11,18 +11,6 @@
     "example": "bun run examples/basic-usage.ts",
     "analyze": "bun run src/main.ts"
   },
-  "dependencies": {
-    "@babel/parser": "^7.24.0",
-    "@babel/traverse": "^7.24.0",
-    "@babel/types": "^7.24.0",
-    "prettier": "^3.3.3",
-    "recast": "^0.24.1",
-    "ollama": "^0.4.7"
-  },
-  "devDependencies": {
-    "@types/node": "^20.11.30",
-    "typescript": "^5.4.2"
-  },
   "keywords": [
     "code-analysis",
     "deobfuscation",
@@ -36,5 +24,17 @@
   "license": "MIT",
   "engines": {
     "bun": ">=1.0.0"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.28.0",
+    "@babel/traverse": "^7.28.0",
+    "@babel/types": "^7.28.2",
+    "@types/cli-progress": "^3.11.6",
+    "@types/node": "^24.2.0",
+    "cli-progress": "^3.12.0",
+    "ollama": "^0.5.16",
+    "prettier": "^3.6.2",
+    "recast": "^0.23.11",
+    "typescript": "^5.9.2"
   }
 }

@@ -3,10 +3,13 @@ import { debug, errorLog } from "../utils/logger";
 import { writeFileSafe } from "../utils/fileSystem";
 import { fileHash } from "../utils/crypto";
 import type { FileHandle } from "../types";
+import { OLLAMA_HOST_ADDRESS } from "../..";
 
 let ollamaClient: Ollama | null = null;
 try {
-  ollamaClient = new Ollama();
+  ollamaClient = new Ollama({
+    host: OLLAMA_HOST_ADDRESS,
+  });
   debug("[Ollama] Ollama client initialized");
 } catch (err) {
   errorLog("[Ollama] Failed to initialize Ollama client", err);
