@@ -1,244 +1,150 @@
-# Code Analysis and Documentation Tool
+# Hooker
 
-A comprehensive TypeScript/JavaScript code analysis and documentation generation tool with modular architecture.
+> **Reverse-engineering tool for analyzing JavaScript/TypeScript bundles in web applications.**  
+> Designed for fast static analysis, AI-powered code understanding, and architectural insight — perfect for when you need to "figure out what's really going on" in a complex or minified codebase.
 
-## Features
+---
 
-- **Code Deobfuscation**: Automatic detection and deobfuscation of various obfuscation patterns
-- **Runtime Analysis**: Instrumentation and analysis of code execution patterns
-- **Architecture Analysis**: Dependency mapping and architectural visualization
-- **Documentation Generation**: AI-powered code documentation using Ollama
-- **Beautification**: Code formatting and structure improvement
+## 🚀 Overview
 
-## Project Structure
+**Hooker** is a tool for reverse engineering JS/TS bundles.  
+Its main purpose: build an architectural map of an unknown project, visualize dependencies, estimate complexity, and automate the initial audit that would otherwise take weeks for a human.
 
-```
-src/
-├── types/                 # Shared TypeScript interfaces and types
-├── utils/                 # Utility functions
-│   ├── logger.ts         # Centralized logging
-│   ├── crypto.ts         # Cryptographic utilities
-│   └── fileSystem.ts     # File system operations
-├── deobfuscation/        # Code deobfuscation modules
-│   ├── patterns.ts       # Obfuscation pattern definitions
-│   └── index.ts          # Main deobfuscation logic
-├── beautification/       # Code formatting and beautification
-│   └── index.ts          # Beautification with deobfuscation
-├── parsing/              # Code parsing and analysis
-│   └── dependencies.ts   # Dependency parsing
-├── runtime/              # Runtime analysis and instrumentation
-│   ├── analyzer.ts       # Runtime event analysis
-│   └── instrumentation.ts # Code instrumentation utilities
-├── architecture/         # Architecture analysis
-│   └── analyzer.ts       # Module and dependency analysis
-├── ollama/              # AI integration
-│   └── client.ts        # Ollama client and streaming
-├── documentation/        # Documentation generation
-│   └── generator.ts      # Documentation and prompt generation
-└── main.ts              # Main orchestration logic
-```
+- **Who is this for?**  
+  Security engineers, researchers, reverse engineering enthusiasts, and developers who need to quickly understand a foreign frontend bundle.
+- Originally built for Twitch, but suitable for any JS/TS project.
 
-## Modules
+---
 
-### Types (`src/types/`)
+## ⚡️ Features
 
-Centralized type definitions for the entire application:
+- **Analyzes all JS/TS files** in a given folder (`ROOT`) — recursive, any depth.
+- **Generates detailed reports** (`docs/architecture.md`) including:  
+  - Architecture diagram (layered structure)
+  - Layer Analysis (file responsibilities, complexity)
+  - Dependency Matrix (module interconnections)
+  - Complexity Analysis Report (top complex modules, metrics)
+- **AI-powered file analysis:**  
+  Each module is described, dependencies are mapped, and critical spots are highlighted.
+- **Instrumented copies** of all files are saved in `docs/instrumented` (pretty-printed, with runtime comments).
+- **Works with minified, obfuscated, and any JS/TS files.**
 
-- `ObfuscationPattern`: Interface for obfuscation detection and deobfuscation
-- `RuntimeEvent`: Runtime analysis event types
-- `ModuleInfo`: Module analysis information
-- `DepGraph`: Dependency graph structure
+---
 
-### Utils (`src/utils/`)
+## 🛠️ Getting Started
 
-Common utility functions:
+### Requirements
 
-- **Logger**: Centralized debug and error logging
-- **Crypto**: File hashing and cryptographic operations
-- **FileSystem**: Safe file operations with error handling
+- Node.js **v24+**
+- pnpm **v18+**
+- [Ollama](https://ollama.com/) with model `huihui_ai/qwen2.5-1m-abliterated:7b` (or any model with at least 512k context)
 
-### Deobfuscation (`src/deobfuscation/`)
+### Quick Start
 
-Intelligent code deobfuscation:
-
-- **Patterns**: Detects webpack, uglify, terser, jsconfuser, and custom obfuscation
-- **Smart Deobfuscation**: Applies multiple deobfuscation techniques in order of confidence
-
-### Beautification (`src/beautification/`)
-
-Code formatting and structure improvement:
-
-- **Prettier Integration**: Code formatting with Prettier
-- **AST-based Formatting**: Advanced formatting using AST manipulation
-- **Deobfuscation Integration**: Combines deobfuscation with beautification
-
-### Parsing (`src/parsing/`)
-
-Code analysis and parsing:
-
-- **Dependency Parsing**: Extracts import/require statements
-- **AST Analysis**: Uses Babel parser for accurate dependency detection
-- **Multiple Parser Support**: Handles different module systems
-
-### Runtime (`src/runtime/`)
-
-Runtime analysis and instrumentation:
-
-- **RuntimeAnalyzer**: Tracks function calls, API calls, DOM access, and storage operations
-- **Instrumentation**: Automatically instruments code for runtime analysis
-- **Event Tracking**: Comprehensive event tracking with stack traces
-
-### Architecture (`src/architecture/`)
-
-Architectural analysis and visualization:
-
-- **Module Analysis**: Analyzes module complexity, dependencies, and structure
-- **Layer Classification**: Automatically categorizes modules into architectural layers
-- **Mermaid Diagrams**: Generates visual architecture diagrams
-- **Complexity Reports**: Detailed complexity analysis and recommendations
-
-### Ollama (`src/ollama/`)
-
-AI-powered analysis:
-
-- **Streaming Client**: Real-time streaming with Ollama
-- **Cache Management**: Intelligent caching of AI responses
-- **Fallback Support**: Multiple model support with fallback options
-
-### Documentation (`src/documentation/`)
-
-Documentation generation:
-
-- **Prompt Generation**: Structured prompts for AI analysis
-- **Markdown Streaming**: Real-time markdown generation
-- **File Processing**: Orchestrates the entire documentation process
-
-## Usage
-
-### Basic Usage
-
-```typescript
-import { enhancedMain } from "./src/main";
-
-// Run the enhanced analysis (includes architecture analysis and instrumentation)
-await enhancedMain();
+```bash
+git clone https://github.com/oldiberezkoo/hooker.git
+cd hooker
+pnpm install
 ```
 
-### Individual Module Usage
+**1. Prepare your bundle for analysis:**  
+Download or copy your JS files into a folder (e.g., `assets/`).
 
-```typescript
-import { smartDeobfuscate } from "./src/deobfuscation";
-import { beautifyWithDeobfuscation } from "./src/beautification";
-import { RuntimeAnalyzer } from "./src/runtime/analyzer";
-import { ArchitectureAnalyzer } from "./src/architecture/analyzer";
+**2. Set the analysis target:**  
+Open `index.ts` and set the `ROOT` variable:
 
-// Deobfuscate code
-const deobfuscated = await smartDeobfuscate(obfuscatedCode);
-
-// Beautify with deobfuscation
-const beautified = await beautifyWithDeobfuscation(rawCode);
-
-// Runtime analysis
-const analyzer = new RuntimeAnalyzer();
-const instrumented = analyzer.instrumentCode(code);
-
-// Architecture analysis
-const archAnalyzer = new ArchitectureAnalyzer();
-await archAnalyzer.analyzeProject(depGraph, files);
-const report = archAnalyzer.generateArchitectureReport();
+```ts
+// index.ts
+const ROOT = "assets"; // path to your JS/TS files folder
 ```
 
-## Configuration
-
-The tool supports various configuration options:
-
-### Runtime Analysis Configuration
-
-```typescript
-const config = {
-  trackFunctions: true,
-  trackVariables: true,
-  trackAPICalls: true,
-  trackDOMAccess: true,
-  trackStorageAccess: true,
-  maxEvents: 10000,
-};
+**3. Run the analysis:**
+```bash
+pnpm start
 ```
 
-### Obfuscation Patterns
+**4. View the report:**  
+Results will appear in `docs/architecture.md`.  
+Instrumented versions of the parsed files (with runtime info) will be in `docs/instrumented`.
 
-The tool automatically detects and handles:
+---
 
-- Webpack bundles
-- UglifyJS minification
-- Terser compression
-- JSConfuser obfuscation
-- Custom hex encoding
-- Eval-based obfuscation
+## 📃 Example Output (AI Report for a Module)
 
-## Output
+```markdown
+# assets/20312-17ca21e784f6fef3ca2d.js
 
-The tool generates comprehensive documentation:
+**Why this file exists:**
+This file implements logic and responsibilities related to modal state management in the app...
 
-1. **Per-file Documentation**: Detailed analysis of each source file
-2. **Architecture Reports**: Mermaid diagrams and dependency matrices
-3. **Complexity Analysis**: Module complexity metrics and recommendations
-4. **Instrumented Code**: Runtime-ready instrumented versions
-5. **Cache Files**: Intelligent caching for performance
-
-## Dependencies
-
-- `@babel/parser`: AST parsing
-- `@babel/traverse`: AST traversal
-- `@babel/types`: TypeScript types for AST
-- `prettier`: Code formatting
-- `recast`: AST manipulation
-- `ollama`: AI integration
-- `crypto`: Cryptographic operations
-
-## Development
-
-### Adding New Obfuscation Patterns
-
-```typescript
-// In src/deobfuscation/patterns.ts
-export const obfuscationPatterns: ObfuscationPattern[] = [
-  // ... existing patterns
-  {
-    name: "custom_pattern",
-    detect: (code: string) => /your-pattern/.test(code),
-    confidence: 0.8,
-    deobfuscate: async (code: string) => {
-      // Your deobfuscation logic
-      return deobfuscatedCode;
-    },
-  },
-];
+**Dependencies:**
+- [assets/20312-17ca21e784f6fef3ca2d.js.instrumented.js](../instrumented/assets/20312-17ca21e784f6fef3ca2d.js.instrumented.js)
+---
+[AI-generated description of the module structure, dependencies, complexity metrics, etc.]
 ```
 
-### Adding New Runtime Tracking
+---
 
-```typescript
-// In src/runtime/analyzer.ts
-private instrumentCustomOperation(code: string): string {
-  // Your instrumentation logic
-  return instrumentedCode;
-}
-```
+## 📂 Output Structure
 
-## Architecture Benefits
+- `docs/architecture.md` — the main report: architecture, layers, dependencies, metrics.
+- `docs/instrumented/` — prettified and instrumented versions of all analyzed files.
+- `.cache/` — temporary folder; may contain leftover data from interrupted runs.
 
-1. **Modularity**: Each component is self-contained and testable
-2. **Extensibility**: Easy to add new obfuscation patterns or analysis types
-3. **Maintainability**: Clear separation of concerns
-4. **Reusability**: Components can be used independently
-5. **Type Safety**: Comprehensive TypeScript types throughout
+### ⚠️ Recommendation
+If you change your target project or if a previous run was interrupted, manually delete `.cache` and `docs` before restarting the analysis.
 
-## Performance
+---
 
-- **Intelligent Caching**: Caches AI responses and analysis results
-- **Lazy Loading**: Modules are loaded only when needed
-- **Streaming**: Real-time processing without blocking
-- **Parallel Processing**: Independent file processing
+## 🤖 AI & Ollama
 
-This modular architecture provides a robust foundation for code analysis and documentation generation, with clear separation of concerns and excellent extensibility.
+- Deep analysis uses Ollama with the `huihui_ai/qwen2.5-1m-abliterated:7b` model (1M token context).
+- You can change the model in `src/ollama/client.ts` (minimum required context: 512k).
+- All processing is local; your code and reports never leave your machine.
+
+---
+
+## ⚠️ Limitations
+
+- **Maximum file size is 1,024,000 characters** — larger files are skipped (ML context limitation).
+- Not all JS files can be parsed correctly (e.g., if minified with invalid syntax); in such cases, AI will attempt to make sense of the file, but results may vary.
+- This is an early-stage, "for myself" project — bugs are possible, and the code is not production-ready.
+
+---
+
+## 💡 FAQ
+
+**Why does this project exist?**  
+— For reverse engineering JS/TS projects, automating architecture analysis, and finding hidden complexity.
+
+**Can I increase the per-file size limit?**  
+— No, this is limited by the ML model context.
+
+**How do I change the AI model?**  
+— Edit `src/ollama/client.ts` (min 512k context required).
+
+**Is it safe to analyze private bundles?**  
+— Yes, all files and analysis stay on your machine.
+
+**Is this production-ready?**  
+— Not yet! This is a work-in-progress; refactoring and improvements are planned.
+
+**Where can I ask questions or suggest features?**  
+— Open an issue on GitHub or contact me on Discord: **oldiberezko**
+
+---
+
+## 🧑‍💻 Contributing
+
+Pull requests and ideas are welcome!  
+Open issues, suggest patches, or discuss architecture.
+
+---
+
+## 📜 License
+
+MIT
+
+---
+
+> _Author: [oldiberezkoo](https://github.com/oldiberezkoo)_
