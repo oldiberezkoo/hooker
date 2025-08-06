@@ -1,4 +1,4 @@
-# Hooker
+# hxker
 
 > **Reverse-engineering tool for analyzing JavaScript/TypeScript bundles in web applications.**  
 > Designed for fast static analysis, AI-powered code understanding, and architectural insight — perfect for when you need to "figure out what's really going on" in a complex or minified codebase.
@@ -7,7 +7,7 @@
 
 ## 🚀 Overview
 
-**Hooker** is a tool for reverse engineering JS/TS bundles.  
+**hxker** is a tool for reverse engineering JS/TS bundles.  
 Its main purpose: build an architectural map of an unknown project, visualize dependencies, estimate complexity, and automate the initial audit that would otherwise take weeks for a human.
 
 - **Who is this for?**  
@@ -42,8 +42,8 @@ Its main purpose: build an architectural map of an unknown project, visualize de
 ### Quick Start
 
 ```bash
-git clone https://github.com/oldiberezkoo/hooker.git
-cd hooker
+git clone https://github.com/oldiberezkoo/hxker.git
+cd hxker
 pnpm install
 ```
 
